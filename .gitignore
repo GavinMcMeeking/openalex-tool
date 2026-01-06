@@ -11,6 +11,8 @@ ENV/
 *.egg-info/
 dist/
 build/
+*.egg
+.pytest_cache/
 
 # IDE
 .vscode/
@@ -37,4 +39,7 @@ htmlcov/
 # Environment variables
 .env
 .env.local
+
+# User configuration (stored in home directory, not in repo)
+# ~/.openalex-tool/config.json
 
