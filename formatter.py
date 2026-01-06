@@ -140,6 +140,37 @@ def extract_source(primary_location: Dict[str, Any]) -> Optional[Dict[str, Any]]
     }
 
 
+def reconstruct_abstract_from_inverted_index(inverted_index: Dict[str, List[int]]) -> str:
+    """
+    Reconstruct abstract text from OpenAlex inverted index format.
+    
+    The inverted index maps words to their positions in the abstract.
+    Example: {"Despite": [0], "growing": [1], "in": [3, 57, 73]}
+    
+    Args:
+        inverted_index: Dictionary mapping words to lists of positions
+        
+    Returns:
+        Reconstructed abstract text
+    """
+    if not inverted_index:
+        return ""
+    
+    # Create list of (word, position) tuples
+    word_positions = []
+    for word, positions in inverted_index.items():
+        for position in positions:
+            word_positions.append((position, word))
+    
+    # Sort by position
+    word_positions.sort(key=lambda x: x[0])
+    
+    # Join words with spaces
+    abstract = " ".join(word for _, word in word_positions)
+    
+    return abstract
+
+
 def format_work(work: Dict[str, Any], selected_fields: List[str], searched_author_ids: Optional[List[str]] = None) -> Dict[str, Any]:
     """
     Transform OpenAlex work object to simplified structure.
@@ -174,8 +205,10 @@ def format_work(work: Dict[str, Any], selected_fields: List[str], searched_autho
             # Abstract might be in abstract_inverted_index or just abstract
             abstract = work.get("abstract", "")
             if not abstract and "abstract_inverted_index" in work:
-                # Simple reconstruction from inverted index (basic approach)
-                abstract = work.get("abstract", "")
+                # Reconstruct abstract from inverted index
+                inverted_index = work.get("abstract_inverted_index", {})
+                if inverted_index:
+                    abstract = reconstruct_abstract_from_inverted_index(inverted_index)
             formatted["abstract"] = abstract
         elif field in work:
             # Direct field mapping
