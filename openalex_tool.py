@@ -98,6 +98,12 @@ Examples:
         default=25,
         help="Results per page (default: 25, max: 200)"
     )
+    pagination_group.add_argument(
+        "--sort",
+        type=str,
+        choices=["year", "year-desc", "year-asc", "citations", "citations-desc", "citations-asc"],
+        help="Sort results: 'year' or 'year-desc' (most recent first), 'year-asc' (oldest first), 'citations' or 'citations-desc' (highest first), 'citations-asc' (lowest first)"
+    )
     
     # API configuration
     api_group = parser.add_argument_group("API Configuration")
@@ -246,6 +252,19 @@ def main():
     # Get email (use command-line arg if provided, otherwise use config)
     email = args.email if args.email else get_email()
     
+    # Map user-friendly sort options to OpenAlex API format
+    sort_param = None
+    if args.sort:
+        sort_map = {
+            "year": "publication_year:desc",
+            "year-desc": "publication_year:desc",
+            "year-asc": "publication_year:asc",
+            "citations": "cited_by_count:desc",
+            "citations-desc": "cited_by_count:desc",
+            "citations-asc": "cited_by_count:asc"
+        }
+        sort_param = sort_map.get(args.sort)
+    
     # Search for works
     print("Searching OpenAlex API...")
     try:
@@ -256,6 +275,7 @@ def main():
             institution=args.institution,
             csu_only=args.csu_only,
             fields=selected_fields,
+            sort=sort_param,
             max_results=args.max_results,
             per_page=args.per_page,
             email=email
@@ -276,10 +296,24 @@ def main():
     
     print(f"Found {len(works)} works. Formatting output...")
     
+    # Collect searched author IDs for filtering
+    searched_author_ids = []
+    if args.author_id:
+        # Normalize the author ID
+        from openalex_client import normalize_author_id
+        normalized_id = normalize_author_id(args.author_id)
+        if normalized_id.startswith("A") and normalized_id[1:].isdigit():
+            normalized_id = f"https://openalex.org/{normalized_id}"
+        searched_author_ids.append(normalized_id)
+    
+    if author_ids_from_file:
+        # These are already in URL format from lookup
+        searched_author_ids.extend(author_ids_from_file)
+    
     # Format works
     formatted_works = []
     for work in works:
-        formatted = format_work(work, selected_fields)
+        formatted = format_work(work, selected_fields, searched_author_ids if searched_author_ids else None)
         formatted_works.append(formatted)
     
     # Write to file

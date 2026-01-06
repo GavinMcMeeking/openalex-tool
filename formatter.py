@@ -8,29 +8,53 @@ from datetime import datetime
 from typing import List, Dict, Any, Optional
 
 
-def extract_authors(authorships: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+def extract_authors(authorships: List[Dict[str, Any]], searched_author_ids: Optional[List[str]] = None) -> List[Dict[str, Any]]:
     """
     Extract and flatten author information from authorships.
+    If searched_author_ids is provided, only returns authors that match.
+    Otherwise, returns only the first author.
     
     Args:
         authorships: List of authorship objects from OpenAlex
+        searched_author_ids: Optional list of author IDs we're searching for
         
     Returns:
-        List of simplified author dictionaries
+        List of simplified author dictionaries (max 1 author)
     """
     authors = []
     for authorship in authorships or []:
         author = authorship.get("author", {})
         if author:
-            author_info = {
-                "id": author.get("id", ""),
-                "name": author.get("display_name", ""),
-                "orcid": author.get("orcid", "")
-            }
-            # Add position if available
-            if "author_position" in authorship:
-                author_info["position"] = authorship["author_position"]
-            authors.append(author_info)
+            author_id = author.get("id", "")
+            
+            # If we're searching for specific authors, only include matching ones
+            if searched_author_ids:
+                if author_id in searched_author_ids:
+                    author_info = {
+                        "id": author_id,
+                        "name": author.get("display_name", ""),
+                        "orcid": author.get("orcid", "")
+                    }
+                    # Add position if available
+                    if "author_position" in authorship:
+                        author_info["position"] = authorship["author_position"]
+                    authors.append(author_info)
+                    # Return immediately since we only want one author
+                    return authors
+            else:
+                # If not searching by author, return first author only
+                if not authors:  # Only add the first one
+                    author_info = {
+                        "id": author_id,
+                        "name": author.get("display_name", ""),
+                        "orcid": author.get("orcid", "")
+                    }
+                    # Add position if available
+                    if "author_position" in authorship:
+                        author_info["position"] = authorship["author_position"]
+                    authors.append(author_info)
+                    return authors
+    
     return authors
 
 
@@ -116,13 +140,14 @@ def extract_source(primary_location: Dict[str, Any]) -> Optional[Dict[str, Any]]
     }
 
 
-def format_work(work: Dict[str, Any], selected_fields: List[str]) -> Dict[str, Any]:
+def format_work(work: Dict[str, Any], selected_fields: List[str], searched_author_ids: Optional[List[str]] = None) -> Dict[str, Any]:
     """
     Transform OpenAlex work object to simplified structure.
     
     Args:
         work: Raw work object from OpenAlex API
         selected_fields: List of fields to include in output
+        searched_author_ids: Optional list of author IDs we're searching for
         
     Returns:
         Simplified work dictionary
@@ -132,7 +157,7 @@ def format_work(work: Dict[str, Any], selected_fields: List[str]) -> Dict[str, A
     # Handle each selected field
     for field in selected_fields:
         if field == "authors":
-            formatted["authors"] = extract_authors(work.get("authorships", []))
+            formatted["authors"] = extract_authors(work.get("authorships", []), searched_author_ids)
         elif field == "institutions":
             formatted["institutions"] = extract_institutions(work.get("authorships", []))
         elif field == "concepts":

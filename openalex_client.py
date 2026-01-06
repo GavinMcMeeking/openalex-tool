@@ -206,6 +206,7 @@ def build_query_params(
     institution: Optional[str] = None,
     csu_only: bool = False,
     fields: Optional[List[str]] = None,
+    sort: Optional[str] = None,
     per_page: int = DEFAULT_PER_PAGE,
     page: int = 1,
     email: Optional[str] = None
@@ -283,6 +284,10 @@ def build_query_params(
     # We fetch all fields and filter in the formatter instead
     # Field selection is handled in formatter.py, not in API query
     
+    # Sorting
+    if sort:
+        params["sort"] = sort
+    
     # Pagination
     params["per_page"] = min(per_page, MAX_PER_PAGE)
     params["page"] = page
@@ -337,6 +342,7 @@ def search_works(
     institution: Optional[str] = None,
     csu_only: bool = False,
     fields: Optional[List[str]] = None,
+    sort: Optional[str] = None,
     max_results: int = DEFAULT_MAX_RESULTS,
     per_page: int = DEFAULT_PER_PAGE,
     email: Optional[str] = None
@@ -408,6 +414,7 @@ def search_works(
                 institution=institution,
                 csu_only=False,  # Already handled above
                 fields=fields,
+                sort=sort,
                 max_results=max_results if max_results > 0 else 0,  # 0 = all
                 per_page=per_page,
                 email=email
@@ -441,6 +448,7 @@ def search_works(
             institution=institution,
             csu_only=False,  # Already handled above if needed
             fields=fields,
+            sort=sort,
             per_page=per_page,
             page=page,
             email=email
