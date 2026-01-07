@@ -16,12 +16,12 @@ setup(
     long_description=long_description,
     long_description_content_type="text/markdown",
     url="https://github.com/YOUR_USERNAME/openalex-tool",
-    py_modules=["openalex_tool", "openalex_client", "config", "formatter", "config_manager"],
+    packages=find_packages(),
     python_requires=">=3.8",
     install_requires=requirements,
     entry_points={
         "console_scripts": [
-            "openalex-tool=openalex_tool:main",
+            "openalex-tool=openalex_tool_pkg:main",
         ],
     },
     classifiers=[
