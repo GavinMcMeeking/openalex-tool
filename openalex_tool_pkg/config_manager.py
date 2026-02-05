@@ -11,7 +11,6 @@ from typing import Optional
 
 CONFIG_DIR = Path.home() / ".openalex-tool"
 CONFIG_FILE = CONFIG_DIR / "config.json"
-DEFAULT_EMAIL = "gavinmcmeeking@gmail.com"
 
 
 def get_config_dir() -> Path:
@@ -23,30 +22,24 @@ def get_config_dir() -> Path:
 def load_config() -> dict:
     """
     Load configuration from file.
-    
+
     Returns:
         Dictionary with configuration values
     """
     if not CONFIG_FILE.exists():
-        # Return default config
-        return {"email": DEFAULT_EMAIL}
-    
+        return {}
+
     try:
         with open(CONFIG_FILE, "r", encoding="utf-8") as f:
-            config = json.load(f)
-            # Ensure email is set (migrate old configs)
-            if "email" not in config:
-                config["email"] = DEFAULT_EMAIL
-            return config
+            return json.load(f)
     except (json.JSONDecodeError, IOError):
-        # If config file is corrupted, return defaults
-        return {"email": DEFAULT_EMAIL}
+        return {}
 
 
 def save_config(config: dict) -> None:
     """
     Save configuration to file.
-    
+
     Args:
         config: Dictionary with configuration values
     """
@@ -55,21 +48,21 @@ def save_config(config: dict) -> None:
         json.dump(config, f, indent=2)
 
 
-def get_email() -> str:
+def get_email() -> Optional[str]:
     """
     Get the configured email address.
-    
+
     Returns:
-        Email address from config or default
+        Email address from config, or None if not configured
     """
     config = load_config()
-    return config.get("email", DEFAULT_EMAIL)
+    return config.get("email")
 
 
 def set_email(email: str) -> None:
     """
     Set the email address in configuration.
-    
+
     Args:
         email: Email address to save
     """
@@ -82,4 +75,3 @@ def set_email(email: str) -> None:
 def get_config_path() -> str:
     """Get the path to the config file for display purposes."""
     return str(CONFIG_FILE)
-

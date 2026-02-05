@@ -11,17 +11,16 @@ from openalex_tool_pkg.config_manager import (
     get_email,
     set_email,
     get_config_path,
-    DEFAULT_EMAIL,
     CONFIG_FILE,
 )
 
 
 class TestLoadConfig:
     @patch("openalex_tool_pkg.config_manager.CONFIG_FILE")
-    def test_no_file_returns_default(self, mock_path):
+    def test_no_file_returns_empty(self, mock_path):
         mock_path.exists.return_value = False
         config = load_config()
-        assert config == {"email": DEFAULT_EMAIL}
+        assert config == {}
 
     @patch("builtins.open", mock_open(read_data='{"email": "user@example.com"}'))
     @patch("openalex_tool_pkg.config_manager.CONFIG_FILE")
@@ -32,10 +31,10 @@ class TestLoadConfig:
 
     @patch("builtins.open", mock_open(read_data="not json"))
     @patch("openalex_tool_pkg.config_manager.CONFIG_FILE")
-    def test_corrupted_file_returns_default(self, mock_path):
+    def test_corrupted_file_returns_empty(self, mock_path):
         mock_path.exists.return_value = True
         config = load_config()
-        assert config == {"email": DEFAULT_EMAIL}
+        assert config == {}
 
 
 class TestSaveConfig:
@@ -55,9 +54,9 @@ class TestGetEmail:
         assert get_email() == "user@example.com"
 
     @patch("openalex_tool_pkg.config_manager.load_config")
-    def test_returns_default_when_missing(self, mock_load):
+    def test_returns_none_when_missing(self, mock_load):
         mock_load.return_value = {}
-        assert get_email() == DEFAULT_EMAIL
+        assert get_email() is None
 
 
 class TestSetEmail:

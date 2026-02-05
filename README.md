@@ -112,7 +112,7 @@ At least one search parameter must be provided.
 #### API Configuration
 
 - `--email` - Email address for polite pool (overrides saved config, optional)
-- `--set-email EMAIL` - Set and save email address to config file (default: gavinmcmeeking@gmail.com)
+- `--set-email EMAIL` - Set and save email address to config file
 - `--show-config` - Display current configuration
 
 #### CSU-Specific Options
@@ -287,8 +287,6 @@ openalex-tool --show-config
 ```
 
 The email is saved in `~/.openalex-tool/config.json` and will be used automatically for all API requests. You can override it for a single request using the `--email` flag.
-
-**Default email:** `gavinmcmeeking@gmail.com` (used if no config file exists)
 
 ### Author File Format
 
