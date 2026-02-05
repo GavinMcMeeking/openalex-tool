@@ -9,29 +9,27 @@ OpenAlex CLI Tool — a Python command-line interface for querying the [OpenAlex
 ## Setup & Commands
 
 ```bash
-# Install (editable/development mode)
-pip install -e .
+# Install (editable/development mode with test dependencies)
+pip install -e ".[dev]"
 
 # Run the CLI
 openalex-tool --search "machine learning" --output results.json
 
-# Run directly without installing
-python openalex_tool.py [args]
+# Run tests
+python -m pytest tests/ -v
 ```
-
-There are no tests, linter, or build steps configured.
 
 ## Architecture
 
-The codebase has a dual structure: modules exist at both the root level and inside `openalex_tool_pkg/`. The installed package entry point is `openalex_tool_pkg:main`. Running directly uses `openalex_tool.py` at the root.
+All source code lives in `openalex_tool_pkg/`. The installed package entry point is `openalex_tool_pkg:main`.
 
 ### Module Responsibilities
 
-- **`openalex_tool.py` / `openalex_tool_pkg/__init__.py`** — CLI entry point. Argument parsing (`parse_args`), validation, orchestration of the full pipeline: parse → lookup authors → search → format → write.
-- **`openalex_client.py`** — All OpenAlex API interaction. Handles pagination, request batching (max 25 author IDs per request due to URL length limits), deduplication, rate limiting (exponential backoff + Retry-After), and "polite pool" access via email parameter.
-- **`formatter.py`** — Transforms API responses to output JSON. Key logic: abstract reconstruction from OpenAlex's inverted index format, author filtering (1 author per work—searched author if applicable, else first author).
-- **`config.py`** — Field definitions. `CORE_FIELDS` (7 default fields), `EXTENDED_FIELDS` (19 optional), `FIELD_ALIASES` (e.g., `date` → `publication_date`, `citations` → `cited_by_count`). Field include/exclude resolution.
-- **`config_manager.py`** — Persistent user config at `~/.openalex-tool/config.json`. Currently stores email for polite pool API access.
+- **`openalex_tool_pkg/__init__.py`** — CLI entry point. Argument parsing (`parse_args`), validation, orchestration of the full pipeline: parse → lookup authors → search → format → write.
+- **`openalex_tool_pkg/openalex_client.py`** — All OpenAlex API interaction. Handles pagination, request batching (max 25 author IDs per request due to URL length limits), deduplication, rate limiting (exponential backoff + Retry-After), and "polite pool" access via email parameter.
+- **`openalex_tool_pkg/formatter.py`** — Transforms API responses to output JSON. Key logic: abstract reconstruction from OpenAlex's inverted index format, author filtering (1 author per work—searched author if applicable, else first author).
+- **`openalex_tool_pkg/config.py`** — Field definitions. `CORE_FIELDS` (7 default fields), `EXTENDED_FIELDS` (19 optional), `FIELD_ALIASES` (e.g., `date` → `publication_date`, `citations` → `cited_by_count`). Field include/exclude resolution.
+- **`openalex_tool_pkg/config_manager.py`** — Persistent user config at `~/.openalex-tool/config.json`. Currently stores email for polite pool API access.
 
 ### Data Flow
 
@@ -44,6 +42,46 @@ CLI args → validate (at least one search param required) → resolve author na
 - **Inverted index abstracts**: OpenAlex stores abstracts as `{"word": [positions]}`. The tool reconstructs readable text by sorting on position.
 - **Batching**: Author queries over 25 IDs are split into batches with results deduplicated by work ID.
 
+## OpenAlex API Surface
+
+### Endpoints (constants in `openalex_client.py`)
+
+- `BASE_URL` = `https://api.openalex.org/works` — search and retrieve scholarly works
+- `INSTITUTIONS_URL` = `https://api.openalex.org/institutions` — look up institutions by name
+- `AUTHORS_URL` = `https://api.openalex.org/authors` — look up authors by name or institution
+
+### Filter Syntax
+
+- Format: `field.operator:value` (e.g., `display_name.search:MIT`)
+- Pipe `|` for OR logic: `authorships.author.id:A1|A2`
+- Comma `,` for AND logic (multiple filters): `filter=authorships.author.id:A1,authorships.institutions.id:I123`
+
+### Pagination
+
+- Offset-based: `page` + `per_page` parameters (not cursor-based)
+- The tool paginates automatically until `max_results` is reached or no more results
+
+### Key Query Parameters
+
+- `mailto` — email for polite pool (better rate limits)
+- `search` — full-text search query
+- `filter` — structured filters (see syntax above)
+- `per_page` — results per page (max 200)
+- `page` — page number (1-indexed)
+- `select` — fields to return (used only for author ID lookups, not for works)
+- `sort` — sort order (e.g., `publication_year:desc`, `cited_by_count:desc`)
+
+### Key Constants
+
+- `DEFAULT_PER_PAGE = 25`
+- `MAX_PER_PAGE = 200`
+- `DEFAULT_MAX_RESULTS = 100`
+- `MAX_AUTHORS_PER_FILTER = 25` (defined in `search_works()`)
+
 ## Dependencies
 
-Single runtime dependency: `requests>=2.31,<3`. Python 3.8+.
+Single runtime dependency: `requests>=2.31,<3`. Dev dependency: `pytest>=7.0`. Python 3.8+.
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for project structure, how-to guides, and git workflow.
