@@ -110,7 +110,7 @@ Examples:
     api_group.add_argument(
         "--email",
         type=str,
-        help=f"Email address for polite pool (overrides saved config, default: {get_email()})"
+        help="Email address for polite pool (overrides saved config)"
     )
     
     # List available fields

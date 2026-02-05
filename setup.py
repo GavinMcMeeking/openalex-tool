@@ -19,6 +19,9 @@ setup(
     packages=find_packages(),
     python_requires=">=3.8",
     install_requires=requirements,
+    extras_require={
+        "dev": ["pytest>=7.0"],
+    },
     entry_points={
         "console_scripts": [
             "openalex-tool=openalex_tool_pkg:main",
