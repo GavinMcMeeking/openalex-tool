@@ -137,32 +137,47 @@ def get_csu_author_ids(email: Optional[str] = None, max_authors: int = 1000) -> 
     return author_ids[:max_authors]
 
 
-def lookup_author_id(author_name: str, email: Optional[str] = None) -> Optional[str]:
+def lookup_author_id(author_name: str, email: Optional[str] = None, institution_id: Optional[str] = None) -> Optional[str]:
     """
-    Look up author ID by name.
-    
+    Look up author ID by name, optionally filtered by institution.
+
+    When institution_id is provided, tries the filtered lookup first. If no
+    results are found, falls back to an unfiltered lookup by name only.
+
     Args:
         author_name: Author display name
         email: Email for polite pool
-        
+        institution_id: Optional institution ID to narrow results
+
     Returns:
         Author OpenAlex ID URL or None if not found
     """
+    filter_parts = [f"display_name.search:{author_name}"]
+    if institution_id:
+        filter_parts.append(f"last_known_institutions.id:{institution_id}")
     params = {
-        "filter": f"display_name.search:{author_name}",
+        "filter": ",".join(filter_parts),
         "per_page": 1
     }
     if email:
         params["mailto"] = email
-    
+
     try:
         response = make_request(AUTHORS_URL, params)
         results = response.get("results", [])
         if results:
             return results[0].get("id")
+
+        # Fall back to unfiltered lookup if institution filter yielded nothing
+        if institution_id:
+            params["filter"] = f"display_name.search:{author_name}"
+            response = make_request(AUTHORS_URL, params)
+            results = response.get("results", [])
+            if results:
+                return results[0].get("id")
     except Exception:
         pass
-    
+
     return None
 
 
