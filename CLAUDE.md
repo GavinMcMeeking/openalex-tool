@@ -30,11 +30,12 @@ All source code lives in `openalex_tool_pkg/`. The installed package entry point
 - **`openalex_tool_pkg/formatter.py`** — Transforms API responses to output JSON. Key logic: abstract reconstruction from OpenAlex's inverted index format, author filtering (1 author per work—searched author if applicable, else first author).
 - **`openalex_tool_pkg/config.py`** — Field definitions. `CORE_FIELDS` (7 default fields), `EXTENDED_FIELDS` (19 optional), `FIELD_ALIASES` (e.g., `date` → `publication_date`, `citations` → `cited_by_count`). Field include/exclude resolution.
 - **`openalex_tool_pkg/name_resolver.py`** — Tavily search integration for resolving abbreviated author names (first initials) to full names. Handles TSV author file parsing, abbreviation detection, and institutional context for better lookups.
+- **`openalex_tool_pkg/comp_report.py`** — CSU compensation report CSV ingestion. Parses CSV with quoted fields, interactive department/job-title filtering, deduplication, and conversion to author entries for the resolution pipeline.
 - **`openalex_tool_pkg/config_manager.py`** — Persistent user config at `~/.openalex-tool/config.json`. Stores email for polite pool API access and Tavily API key.
 
 ### Data Flow
 
-CLI args → validate (at least one search param required) → parse author file (TSV or plain text) → resolve abbreviated names via Tavily (if enabled) → lookup author IDs via OpenAlex API (with optional institution filter) → build query filters → paginated API search (with batching/dedup) → format each work → write JSON with metadata.
+CLI args → validate (at least one search param required) → parse author file (TSV or plain text) or compensation report CSV (with department/job-title filtering) → resolve abbreviated names via Tavily (if enabled) → lookup author IDs via OpenAlex API (with optional institution filter) → build query filters → paginated API search (with batching/dedup) → format each work → write JSON with metadata.
 
 ### Key Design Decisions
 
