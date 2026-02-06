@@ -72,6 +72,30 @@ def set_email(email: str) -> None:
     print(f"✓ Email configured: {email}")
 
 
+def get_tavily_api_key() -> Optional[str]:
+    """
+    Get the configured Tavily API key.
+
+    Returns:
+        Tavily API key from config, or None if not configured
+    """
+    config = load_config()
+    return config.get("tavily_api_key")
+
+
+def set_tavily_api_key(key: str) -> None:
+    """
+    Set the Tavily API key in configuration.
+
+    Args:
+        key: Tavily API key to save
+    """
+    config = load_config()
+    config["tavily_api_key"] = key
+    save_config(config)
+    print("Tavily API key configured.")
+
+
 def get_config_path() -> str:
     """Get the path to the config file for display purposes."""
     return str(CONFIG_FILE)

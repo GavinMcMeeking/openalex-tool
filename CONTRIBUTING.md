@@ -9,11 +9,13 @@ openalex-tool/
 │   ├── config.py               # Field definitions and validation
 │   ├── config_manager.py       # Persistent user config (~/.openalex-tool/)
 │   ├── formatter.py            # API response → output JSON
+│   ├── name_resolver.py        # Tavily name resolution, TSV parsing
 │   └── openalex_client.py      # OpenAlex API client
 ├── tests/                      # pytest test suite
 │   ├── test_config.py
 │   ├── test_config_manager.py
 │   ├── test_formatter.py
+│   ├── test_name_resolver.py
 │   └── test_openalex_client.py
 ├── setup.py                    # Package configuration
 ├── requirements.txt            # Runtime dependencies

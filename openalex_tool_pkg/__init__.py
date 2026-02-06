@@ -11,9 +11,15 @@ import sys
 from typing import Optional
 
 from .config import get_fields_to_select, ALL_FIELDS
-from .openalex_client import search_works, lookup_author_id, OpenAlexAPIError, RateLimitError
+from .openalex_client import search_works, lookup_author_id, lookup_institution_id, OpenAlexAPIError, RateLimitError
 from .formatter import format_work, write_json
-from .config_manager import get_email, set_email, get_config_path
+from .config_manager import get_email, set_email, get_config_path, get_tavily_api_key as get_config_tavily_key, set_tavily_api_key
+from .name_resolver import (
+    detect_file_format,
+    parse_author_line,
+    resolve_abbreviated_name,
+    get_tavily_api_key,
+)
 
 
 def parse_args():
@@ -112,6 +118,16 @@ Examples:
         type=str,
         help="Email address for polite pool (overrides saved config)"
     )
+    api_group.add_argument(
+        "--tavily-api-key",
+        type=str,
+        help="Tavily API key for name resolution (overrides saved config)"
+    )
+    api_group.add_argument(
+        "--no-tavily",
+        action="store_true",
+        help="Disable Tavily name resolution for abbreviated author names"
+    )
     
     # List available fields
     parser.add_argument(
@@ -127,6 +143,12 @@ Examples:
         type=str,
         metavar="EMAIL",
         help="Set the email address for polite pool (saved to config file)"
+    )
+    config_group.add_argument(
+        "--set-tavily-key",
+        type=str,
+        metavar="KEY",
+        help="Set the Tavily API key for name resolution (saved to config file)"
     )
     config_group.add_argument(
         "--show-config",
@@ -171,11 +193,17 @@ def main():
     if args.set_email:
         set_email(args.set_email)
         return 0
-    
+
+    if args.set_tavily_key:
+        set_tavily_api_key(args.set_tavily_key)
+        return 0
+
     if args.show_config:
         config_email = get_email()
+        tavily_key = get_config_tavily_key()
         print(f"Configuration file: {get_config_path()}")
         print(f"Email: {config_email}")
+        print(f"Tavily API key: {'configured' if tavily_key else 'not set'}")
         return 0
     
     # Handle list-fields option
@@ -188,29 +216,77 @@ def main():
     if args.author_file:
         try:
             with open(args.author_file, "r", encoding="utf-8") as f:
-                author_names = [line.strip() for line in f if line.strip()]
-            
-            if not author_names:
+                lines = [line.rstrip("\n\r") for line in f]
+
+            if not lines or not any(line.strip() for line in lines):
                 print(f"Error: Author file '{args.author_file}' is empty", file=sys.stderr)
                 return 1
-            
-            print(f"Looking up {len(author_names)} author(s) from file...")
-            found_count = 0
+
+            # Detect file format (TSV with headers vs plain text)
+            headers = detect_file_format(lines[0])
+            data_lines = lines[1:] if headers else lines
+
+            # Parse author entries
+            author_entries = []
+            for line in data_lines:
+                entry = parse_author_line(line, headers)
+                if entry:
+                    author_entries.append(entry)
+
+            if not author_entries:
+                print(f"Error: No valid author entries in '{args.author_file}'", file=sys.stderr)
+                return 1
+
+            # Determine institution context
+            institution_name = None
+            institution_id = None
+            if args.csu_only:
+                institution_name = "Colorado State University"
+            elif args.institution:
+                institution_name = args.institution
+
+            # Look up institution ID for filtered lookups
             email_for_lookup = args.email if args.email else get_email()
-            for name in author_names:
-                author_id = lookup_author_id(name, email_for_lookup)
+            if institution_name:
+                institution_id = lookup_institution_id(institution_name, email_for_lookup)
+
+            # Resolve abbreviated names via Tavily if enabled
+            use_tavily = not args.no_tavily
+            tavily_key = None
+            if use_tavily:
+                tavily_key = get_tavily_api_key(args.tavily_api_key)
+
+            print(f"Looking up {len(author_entries)} author(s) from file...", flush=True)
+            found_count = 0
+            for entry in author_entries:
+                name = entry["name"]
+
+                # Try Tavily resolution for abbreviated names
+                if use_tavily and tavily_key:
+                    resolved_name, was_resolved = resolve_abbreviated_name(
+                        name,
+                        institution=institution_name,
+                        department=entry.get("department"),
+                        college=entry.get("college"),
+                        tavily_api_key=tavily_key,
+                    )
+                    if was_resolved:
+                        print(f"  Resolved: {name} -> {resolved_name}", flush=True)
+                        name = resolved_name
+
+                author_id = lookup_author_id(name, email_for_lookup, institution_id)
                 if author_id:
                     author_ids_from_file.append(author_id)
                     found_count += 1
-                    print(f"  ✓ Found: {name} -> {author_id}")
+                    print(f"  Found: {name} -> {author_id}", flush=True)
                 else:
-                    print(f"  ✗ Not found: {name}", file=sys.stderr)
-            
+                    print(f"  Not found: {name}", file=sys.stderr)
+
             if not author_ids_from_file:
                 print("Error: No authors found from file", file=sys.stderr)
                 return 1
-            
-            print(f"Successfully looked up {found_count} of {len(author_names)} author(s)")
+
+            print(f"Successfully looked up {found_count} of {len(author_entries)} author(s)")
         except FileNotFoundError:
             print(f"Error: Author file '{args.author_file}' not found", file=sys.stderr)
             return 1

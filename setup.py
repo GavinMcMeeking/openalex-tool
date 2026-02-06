@@ -21,6 +21,7 @@ setup(
     install_requires=requirements,
     extras_require={
         "dev": ["pytest>=7.0"],
+        "tavily": ["tavily-python>=0.3.0"],
     },
     entry_points={
         "console_scripts": [

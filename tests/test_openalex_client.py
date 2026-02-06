@@ -6,9 +6,11 @@ from openalex_tool_pkg.openalex_client import (
     normalize_author_id,
     build_query_params,
     make_request,
+    lookup_author_id,
     OpenAlexAPIError,
     RateLimitError,
     BASE_URL,
+    AUTHORS_URL,
     DEFAULT_PER_PAGE,
     MAX_PER_PAGE,
 )
@@ -108,3 +110,69 @@ class TestMakeRequest:
 
         with pytest.raises(OpenAlexAPIError):
             make_request("https://api.openalex.org/works", {}, max_retries=1)
+
+
+class TestLookupAuthorIdWithInstitution:
+    @patch("openalex_tool_pkg.openalex_client.make_request")
+    def test_institution_id_adds_filter(self, mock_request):
+        mock_request.return_value = {
+            "results": [{"id": "https://openalex.org/A123"}]
+        }
+        result = lookup_author_id(
+            "Eugene Kelly",
+            email="test@example.com",
+            institution_id="https://openalex.org/I123456"
+        )
+        assert result == "https://openalex.org/A123"
+        # Verify the filter includes institution
+        call_args = mock_request.call_args
+        params = call_args[0][1]
+        assert "last_known_institutions.id:https://openalex.org/I123456" in params["filter"]
+        assert "display_name.search:Eugene Kelly" in params["filter"]
+
+    @patch("openalex_tool_pkg.openalex_client.make_request")
+    def test_no_institution_id_no_filter(self, mock_request):
+        mock_request.return_value = {
+            "results": [{"id": "https://openalex.org/A123"}]
+        }
+        result = lookup_author_id("Eugene Kelly")
+        assert result == "https://openalex.org/A123"
+        call_args = mock_request.call_args
+        params = call_args[0][1]
+        assert "last_known_institutions" not in params["filter"]
+
+    @patch("openalex_tool_pkg.openalex_client.make_request")
+    def test_no_results_returns_none(self, mock_request):
+        mock_request.return_value = {"results": []}
+        result = lookup_author_id("Nonexistent Author")
+        assert result is None
+
+    @patch("openalex_tool_pkg.openalex_client.make_request")
+    def test_falls_back_without_institution_filter(self, mock_request):
+        """When institution-filtered lookup returns nothing, retries without filter."""
+        mock_request.side_effect = [
+            {"results": []},  # First call: filtered, no results
+            {"results": [{"id": "https://openalex.org/A999"}]},  # Second call: unfiltered
+        ]
+        result = lookup_author_id(
+            "Heather Blackburn",
+            institution_id="https://openalex.org/I123456"
+        )
+        assert result == "https://openalex.org/A999"
+        assert mock_request.call_count == 2
+        # Second call should not have institution in filter
+        second_params = mock_request.call_args_list[1][0][1]
+        assert "last_known_institutions" not in second_params["filter"]
+
+    @patch("openalex_tool_pkg.openalex_client.make_request")
+    def test_no_fallback_when_filtered_succeeds(self, mock_request):
+        """When institution-filtered lookup succeeds, no fallback needed."""
+        mock_request.return_value = {
+            "results": [{"id": "https://openalex.org/A111"}]
+        }
+        result = lookup_author_id(
+            "Eugene Kelly",
+            institution_id="https://openalex.org/I123456"
+        )
+        assert result == "https://openalex.org/A111"
+        assert mock_request.call_count == 1
