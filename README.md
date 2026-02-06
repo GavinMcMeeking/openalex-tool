@@ -14,7 +14,7 @@ A simple command-line tool for querying the OpenAlex API to fetch scholarly work
 1. Clone or download this repository:
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/openalex-tool.git
+git clone https://github.com/GavinMcMeeking/openalex-tool.git
 cd openalex-tool
 ```
 
@@ -22,6 +22,9 @@ cd openalex-tool
 
 ```bash
 pip install .
+
+# Or, to include Tavily support for abbreviated name resolution:
+pip install ".[tavily]"
 ```
 
 This will install the tool and its dependencies. After installation, you can use the `openalex-tool` command from anywhere on your system.
@@ -92,7 +95,7 @@ openalex-tool --author-file authors_example.txt --csu-only --output csu_authors.
 
 - `--search`, `-s` - Text search query
 - `--author-id`, `-a` - Author OpenAlex ID (e.g., `A2208157607`) or ORCID (e.g., `0000-0002-1825-0097`)
-- `--author-file` - Path to file containing author names (one per line). Names will be looked up automatically.
+- `--author-file` - Path to file containing author names. Supports plain text (one name per line) or TSV format with headers. Names will be looked up automatically.
 - `--institution`, `-i` - Institution name (e.g., "Colorado State University")
 - `--csu-only` - Restrict results to authors whose last known affiliation is Colorado State University
 
@@ -104,20 +107,20 @@ At least one search parameter must be provided.
 - `--exclude-fields`, `-e` - Comma-separated list of fields to exclude from default set
 - `--output`, `-o` - Output file path (default: `openalex_results.json`)
 
-#### Pagination
+#### Pagination and Sorting
 
 - `--max-results`, `-m` - Maximum number of results to fetch (default: 100, use `0` for all)
 - `--per-page` - Results per page (default: 25, max: 200)
+- `--sort` - Sort results: `year` (most recent first), `year-asc` (oldest first), `citations` (highest first), `citations-asc` (lowest first)
 
 #### API Configuration
 
 - `--email` - Email address for polite pool (overrides saved config, optional)
+- `--tavily-api-key KEY` - Tavily API key for name resolution (overrides saved config)
+- `--no-tavily` - Disable Tavily name resolution for abbreviated author names
 - `--set-email EMAIL` - Set and save email address to config file
+- `--set-tavily-key KEY` - Set and save Tavily API key to config file
 - `--show-config` - Display current configuration
-
-#### CSU-Specific Options
-
-- `--csu-only` - Restrict results to authors whose last known institution is Colorado State University
 
 #### Other Options
 
@@ -270,27 +273,60 @@ openalex-tool --csu-only --search "climate change" --max-results 100 --output cs
 openalex-tool --author-file authors_example.txt --csu-only --output csu_authors_works.json
 ```
 
-## Configuration
+### Example 8: TSV File with Abbreviated Names (Tavily Resolution)
 
-### Email Configuration
-
-The tool automatically uses a saved email address for the "polite pool" which improves rate limits. 
-
-**Set your email:**
 ```bash
-openalex-tool --set-email your.email@example.com
+openalex-tool --author-file faculty.tsv --csu-only --max-results 50 --output csu_faculty_works.json
 ```
 
-**View current configuration:**
+This reads a TSV file with columns like College, Department, LastName, and FirstInitial. Abbreviated names (e.g., "E. Kelly") are automatically resolved to full names using Tavily search before looking them up on OpenAlex. Requires a configured Tavily API key (see [Configuration](#configuration)).
+
+## Configuration
+
+All configuration is stored in `~/.openalex-tool/config.json` and persists across sessions. View your current settings at any time:
+
 ```bash
 openalex-tool --show-config
 ```
 
-The email is saved in `~/.openalex-tool/config.json` and will be used automatically for all API requests. You can override it for a single request using the `--email` flag.
+### Email (OpenAlex Polite Pool)
 
-### Author File Format
+Setting an email address gives you access to OpenAlex's "polite pool" with better rate limits.
 
-The `--author-file` option accepts a simple text file with one author name per line:
+```bash
+# Save your email (persists across sessions)
+openalex-tool --set-email your.email@example.com
+
+# Override for a single run
+openalex-tool --email other@example.com --search "machine learning"
+```
+
+### Tavily API Key (Name Resolution)
+
+A [Tavily](https://tavily.com/) API key enables automatic resolution of abbreviated author names (see [Tavily Name Resolution](#tavily-name-resolution) below). You can get a free API key at [app.tavily.com](https://app.tavily.com/).
+
+```bash
+# Save your API key (persists across sessions)
+openalex-tool --set-tavily-key YOUR_KEY_HERE
+
+# Override for a single run
+openalex-tool --tavily-api-key YOUR_KEY --author-file faculty.tsv
+
+# Or set via environment variable
+export TAVILY_API_KEY=YOUR_KEY_HERE
+```
+
+Key lookup priority: `--tavily-api-key` flag > `TAVILY_API_KEY` env var > saved config.
+
+**Note:** You also need the optional `tavily-python` package installed (see [Installation](#quick-install)).
+
+## Author File Format
+
+The `--author-file` option supports two formats, auto-detected based on file content.
+
+### Plain Text Format
+
+One full author name per line:
 
 ```
 Cris Argueso
@@ -298,7 +334,60 @@ Lisa Blecker
 Marek Borowiec
 ```
 
-An example file `authors_example.txt` is included in the repository. You can copy and modify it for your own use.
+Use this format when you have full author names. Each name is looked up directly on OpenAlex.
+
+### TSV Format
+
+Tab-separated values with a header row. The required columns are `LastName` and `FirstInitial`. Optional columns `College` and `Department` provide institutional context for Tavily name resolution.
+
+```
+College	Department	LastName	FirstInitial	Rank	AppointmentType	Status	Value
+Natural Sciences	Chemistry	Bernstein	B	Professor	12-Month	Contract/Continuing	0.005
+Agricultural Sciences	Soil and Crop Sciences	Kelly	E	Professor	9-Month	Tenured	0.010
+```
+
+The tool auto-detects TSV format when the first line contains tabs and a recognized header (`LastName` or `Last_Name`). Extra columns (Rank, AppointmentType, etc.) are ignored.
+
+When combined with Tavily name resolution, the College and Department columns provide critical context. For example, "E. Kelly" in "Soil and Crop Sciences" resolves to "Eugene F. Kelly" — without that context, OpenAlex returns the wrong person.
+
+### Tavily Name Resolution
+
+When author names contain only first initials (e.g., "E. Kelly" or "S. Kreidenweis"), the OpenAlex API often returns the wrong author. Tavily search resolves these abbreviated names to full names using institutional context before the OpenAlex lookup.
+
+**Quick start:**
+```bash
+pip install ".[tavily]"                        # Install Tavily dependency
+openalex-tool --set-tavily-key YOUR_KEY_HERE   # Save your API key
+openalex-tool --author-file faculty.tsv --csu-only --output results.json
+```
+
+**How it works:**
+1. The tool detects abbreviated names (single-letter first names like "E." or "S.")
+2. Queries Tavily with the name plus college/department/institution context
+3. Extracts the full name from search results
+4. Looks up the full name on OpenAlex instead of the abbreviation
+
+**Examples:**
+```bash
+# TSV file with abbreviated names — Tavily resolves them automatically
+openalex-tool --author-file faculty.tsv --csu-only --output results.json
+
+# Disable Tavily (fall back to abbreviated name lookup)
+openalex-tool --author-file faculty.tsv --csu-only --no-tavily
+
+# One-time API key override
+openalex-tool --author-file faculty.tsv --tavily-api-key YOUR_KEY
+```
+
+**Verified results:**
+
+| TSV Input | Resolved Name | Correct Author Found |
+|-----------|--------------|---------------------|
+| E. Kelly (Soil and Crop Sciences) | Eugene F. Kelly | Yes |
+| S. Kreidenweis (Atmospheric Science) | Sonia M. Kreidenweis | Yes |
+| H. Blackburn (Biology) | Heather Blackburn | Yes |
+
+**Graceful degradation:** If `tavily-python` is not installed, no API key is configured, or `--no-tavily` is passed, the tool falls back to looking up the abbreviated name directly on OpenAlex.
 
 ## Rate Limits
 
@@ -357,6 +446,16 @@ openalex-tool \
 - Try broader search terms
 - Check author ID format
 - Verify institution name spelling
+
+**Abbreviated author name resolves to wrong person:**
+- Ensure the TSV file has correct College and Department columns — these provide the context Tavily needs
+- Check that `tavily-python` is installed: `pip install -e ".[tavily]"`
+- Verify your API key: `openalex-tool --show-config`
+- Some authors may not have a strong web presence at their institution, limiting Tavily's ability to resolve them
+
+**Author found by Tavily but not in OpenAlex:**
+- Some faculty (especially teaching-focused) may not have an OpenAlex profile linked to their institution
+- The tool automatically falls back to an unfiltered lookup, but the result may be a different person with the same name
 
 **Rate limit errors:**
 - Add `--email` parameter
