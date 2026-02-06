@@ -14,7 +14,7 @@ A simple command-line tool for querying the OpenAlex API to fetch scholarly work
 1. Clone or download this repository:
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/openalex-tool.git
+git clone https://github.com/GavinMcMeeking/openalex-tool.git
 cd openalex-tool
 ```
 
@@ -73,7 +73,7 @@ openalex-tool --institution "Colorado State University" --max-results 50
 
 **Combine search criteria:**
 ```bash
-openalex-tool --search "climate change" --institution "MIT" --fields title,abstract,authors,doi
+openalex-tool --search "climate change" --institution "Colorado State University" --fields title,abstract,authors,doi
 ```
 
 **Search by author names from file:**
@@ -411,7 +411,7 @@ The tool accepts author IDs in multiple formats:
 Institution names are matched using fuzzy search. You can use:
 
 - Full names: "Colorado State University"
-- Partial names: "MIT" (may match multiple institutions)
+- Partial names: "CSU" (may match multiple institutions)
 - Case-insensitive matching
 
 ## Tips for LLM Ingestion
