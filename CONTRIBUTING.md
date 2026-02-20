@@ -6,12 +6,14 @@
 openalex-tool/
 ├── openalex_tool_pkg/          # All source code
 │   ├── __init__.py             # CLI entry point (main, parse_args)
+│   ├── comp_report.py          # CSU compensation report CSV ingestion
 │   ├── config.py               # Field definitions and validation
 │   ├── config_manager.py       # Persistent user config (~/.openalex-tool/)
 │   ├── formatter.py            # API response → output JSON
 │   ├── name_resolver.py        # Tavily name resolution, TSV parsing
 │   └── openalex_client.py      # OpenAlex API client
 ├── tests/                      # pytest test suite
+│   ├── test_comp_report.py
 │   ├── test_config.py
 │   ├── test_config_manager.py
 │   ├── test_formatter.py

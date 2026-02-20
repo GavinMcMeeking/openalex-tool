@@ -95,6 +95,9 @@ openalex-tool --author-file authors_example.txt --csu-only --output csu_authors.
 - `--author-file` - Path to file containing author names. Supports plain text (one name per line) or TSV format with headers. Names will be looked up automatically.
 - `--institution`, `-i` - Institution name (e.g., "Colorado State University")
 - `--csu-only` - Restrict results to authors whose last known affiliation is Colorado State University
+- `--comp-report CSV_FILE` - Path to a CSU compensation report CSV. Implies `--csu-only`. See [Compensation Report](#compensation-report) below.
+- `--department` - Filter compensation report by department (case-insensitive substring). Requires `--comp-report`.
+- `--job-title` - Filter compensation report by job title (case-insensitive substring). Requires `--comp-report`.
 
 At least one search parameter must be provided.
 
@@ -272,6 +275,57 @@ openalex-tool --csu-only --search "climate change" --max-results 100 --output cs
 ```bash
 openalex-tool --author-file authors_example.txt --csu-only --output csu_authors_works.json
 ```
+
+### Example 8: Compensation Report — Filter by Department
+
+```bash
+openalex-tool --comp-report comp_report.csv --department "Chemistry" --max-results 50
+```
+
+### Example 9: Compensation Report — Interactive Selection
+
+```bash
+openalex-tool --comp-report comp_report.csv
+```
+
+When no `--department` or `--job-title` flags are provided, the tool prompts you to select from the unique values in the CSV.
+
+## Compensation Report
+
+The `--comp-report` flag ingests a CSU compensation report CSV and feeds the filtered authors into the Tavily + OpenAlex pipeline. Since all entries are CSU faculty, `--comp-report` implicitly enables `--csu-only`.
+
+### CSV Format
+
+The tool expects a CSV with these columns: `Unit Name`, `Department`, `Last Name`, `First Initial`, `Job Title`. Additional columns (Contract, FTE, Salary, etc.) are ignored.
+
+```csv
+Unit Name,Department,Last Name,First Initial,Job Title,Contract,...
+Veterinary Medicine,Clinical Sciences,Brown,M,Associate Professor,9-Month,...
+"Engineering,Walter Scott, Jr. (SCOE)",Atmospheric Science,Doesken,N,Research Associate III,12-Month,...
+```
+
+Quoted fields with embedded commas (e.g., `"Engineering,Walter Scott, Jr. (SCOE)"`) are handled automatically.
+
+### Filtering
+
+Use `--department` and `--job-title` for non-interactive filtering. Both use case-insensitive substring matching and AND logic when combined:
+
+```bash
+# All professors in Chemistry
+openalex-tool --comp-report comp_report.csv --department "Chemistry" --job-title "Professor"
+
+# All instructors across all departments
+openalex-tool --comp-report comp_report.csv --job-title "Instructor"
+```
+
+Without flags, the tool displays numbered lists of unique departments and job titles for interactive selection.
+
+### Notes
+
+- `--comp-report` and `--author-file` are mutually exclusive
+- `--department` and `--job-title` require `--comp-report`
+- Duplicate rows are deduplicated by (last name, first initial, department)
+- Authors with the same last name and initial but different departments are treated as distinct people
 
 ## Configuration
 

@@ -20,6 +20,7 @@ from .name_resolver import (
     resolve_abbreviated_name,
     get_tavily_api_key,
 )
+from .comp_report import load_and_filter_comp_report
 
 
 def parse_args():
@@ -129,6 +130,25 @@ Examples:
         help="Disable Tavily name resolution for abbreviated author names"
     )
     
+    # Compensation Report
+    comp_group = parser.add_argument_group("Compensation Report")
+    comp_group.add_argument(
+        "--comp-report",
+        type=str,
+        metavar="CSV_FILE",
+        help="Path to a CSU compensation report CSV. Implies --csu-only."
+    )
+    comp_group.add_argument(
+        "--department",
+        type=str,
+        help="Filter compensation report by department (case-insensitive substring)"
+    )
+    comp_group.add_argument(
+        "--job-title",
+        type=str,
+        help="Filter compensation report by job title (case-insensitive substring)"
+    )
+
     # List available fields
     parser.add_argument(
         "--list-fields",
@@ -185,6 +205,55 @@ def parse_field_list(field_string: Optional[str]) -> Optional[list]:
     return [f.strip() for f in field_string.split(",") if f.strip()]
 
 
+def resolve_and_lookup_authors(author_entries, institution_name, email, use_tavily, tavily_key):
+    """Resolve abbreviated names via Tavily and look up OpenAlex author IDs.
+
+    Args:
+        author_entries: List of author entry dicts (must have 'name' key;
+            may have 'department', 'college')
+        institution_name: Institution name for context, or None
+        email: Email for OpenAlex polite pool, or None
+        use_tavily: Whether Tavily resolution is enabled
+        tavily_key: Tavily API key, or None
+
+    Returns:
+        List of OpenAlex author ID URL strings
+    """
+    institution_id = None
+    if institution_name:
+        institution_id = lookup_institution_id(institution_name, email)
+
+    print(f"Looking up {len(author_entries)} author(s)...", flush=True)
+    author_ids = []
+    found_count = 0
+    for entry in author_entries:
+        name = entry["name"]
+
+        # Try Tavily resolution for abbreviated names
+        if use_tavily and tavily_key:
+            resolved_name, was_resolved = resolve_abbreviated_name(
+                name,
+                institution=institution_name,
+                department=entry.get("department"),
+                college=entry.get("college"),
+                tavily_api_key=tavily_key,
+            )
+            if was_resolved:
+                print(f"  Resolved: {name} -> {resolved_name}", flush=True)
+                name = resolved_name
+
+        author_id = lookup_author_id(name, email, institution_id)
+        if author_id:
+            author_ids.append(author_id)
+            found_count += 1
+            print(f"  Found: {name} -> {author_id}", flush=True)
+        else:
+            print(f"  Not found: {name}", file=sys.stderr)
+
+    print(f"Successfully looked up {found_count} of {len(author_entries)} author(s)")
+    return author_ids
+
+
 def main():
     """Main entry point."""
     args = parse_args()
@@ -211,9 +280,49 @@ def main():
         list_available_fields()
         return 0
     
-    # Handle author file if provided
+    # Validate mutually exclusive options
+    if args.comp_report and args.author_file:
+        print("Error: --comp-report and --author-file are mutually exclusive", file=sys.stderr)
+        return 1
+
+    if (args.department or args.job_title) and not args.comp_report:
+        print("Error: --department and --job-title require --comp-report", file=sys.stderr)
+        return 1
+
+    # Shared setup for author resolution
     author_ids_from_file = []
-    if args.author_file:
+    email_for_lookup = args.email if args.email else get_email()
+    use_tavily = not args.no_tavily
+    tavily_key = None
+    if use_tavily:
+        tavily_key = get_tavily_api_key(args.tavily_api_key)
+
+    # Handle compensation report if provided
+    if args.comp_report:
+        args.csu_only = True  # Comp report implies CSU-only
+        try:
+            author_entries = load_and_filter_comp_report(
+                args.comp_report,
+                department=args.department,
+                job_title=args.job_title,
+            )
+        except FileNotFoundError:
+            print(f"Error: Compensation report '{args.comp_report}' not found", file=sys.stderr)
+            return 1
+        except ValueError as e:
+            print(f"Error: {e}", file=sys.stderr)
+            return 1
+
+        institution_name = "Colorado State University"
+        author_ids_from_file = resolve_and_lookup_authors(
+            author_entries, institution_name, email_for_lookup, use_tavily, tavily_key
+        )
+        if not author_ids_from_file:
+            print("Error: No authors found from compensation report", file=sys.stderr)
+            return 1
+
+    # Handle author file if provided
+    elif args.author_file:
         try:
             with open(args.author_file, "r", encoding="utf-8") as f:
                 lines = [line.rstrip("\n\r") for line in f]
@@ -239,54 +348,17 @@ def main():
 
             # Determine institution context
             institution_name = None
-            institution_id = None
             if args.csu_only:
                 institution_name = "Colorado State University"
             elif args.institution:
                 institution_name = args.institution
 
-            # Look up institution ID for filtered lookups
-            email_for_lookup = args.email if args.email else get_email()
-            if institution_name:
-                institution_id = lookup_institution_id(institution_name, email_for_lookup)
-
-            # Resolve abbreviated names via Tavily if enabled
-            use_tavily = not args.no_tavily
-            tavily_key = None
-            if use_tavily:
-                tavily_key = get_tavily_api_key(args.tavily_api_key)
-
-            print(f"Looking up {len(author_entries)} author(s) from file...", flush=True)
-            found_count = 0
-            for entry in author_entries:
-                name = entry["name"]
-
-                # Try Tavily resolution for abbreviated names
-                if use_tavily and tavily_key:
-                    resolved_name, was_resolved = resolve_abbreviated_name(
-                        name,
-                        institution=institution_name,
-                        department=entry.get("department"),
-                        college=entry.get("college"),
-                        tavily_api_key=tavily_key,
-                    )
-                    if was_resolved:
-                        print(f"  Resolved: {name} -> {resolved_name}", flush=True)
-                        name = resolved_name
-
-                author_id = lookup_author_id(name, email_for_lookup, institution_id)
-                if author_id:
-                    author_ids_from_file.append(author_id)
-                    found_count += 1
-                    print(f"  Found: {name} -> {author_id}", flush=True)
-                else:
-                    print(f"  Not found: {name}", file=sys.stderr)
-
+            author_ids_from_file = resolve_and_lookup_authors(
+                author_entries, institution_name, email_for_lookup, use_tavily, tavily_key
+            )
             if not author_ids_from_file:
                 print("Error: No authors found from file", file=sys.stderr)
                 return 1
-
-            print(f"Successfully looked up {found_count} of {len(author_entries)} author(s)")
         except FileNotFoundError:
             print(f"Error: Author file '{args.author_file}' not found", file=sys.stderr)
             return 1
@@ -319,7 +391,14 @@ def main():
         query_info["author_id"] = args.author_id
     if author_ids_from_file:
         query_info["author_ids"] = author_ids_from_file
-        query_info["author_file"] = args.author_file
+        if args.comp_report:
+            query_info["comp_report"] = args.comp_report
+            if args.department:
+                query_info["department_filter"] = args.department
+            if args.job_title:
+                query_info["job_title_filter"] = args.job_title
+        elif args.author_file:
+            query_info["author_file"] = args.author_file
     if args.institution:
         query_info["institution"] = args.institution
     if args.csu_only:
