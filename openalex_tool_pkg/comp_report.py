@@ -11,7 +11,26 @@ import sys
 from typing import Dict, List, Optional
 
 
-REQUIRED_COLUMNS = {"Last Name", "First Initial", "Department", "Job Title", "Unit Name"}
+REQUIRED_COLUMNS = {"Last Name", "First Initial", "Department", "Job Title"}
+
+# Map common column name variants to canonical names
+_HEADER_ALIASES = {
+    "lastname": "Last Name",
+    "last name": "Last Name",
+    "firstinitial": "First Initial",
+    "first initial": "First Initial",
+    "jobtitle": "Job Title",
+    "job title": "Job Title",
+    "department": "Department",
+    "unitname": "Unit Name",
+    "unit name": "Unit Name",
+    "college": "Unit Name",
+}
+
+
+def _normalize_header(header: str) -> str:
+    """Normalize a CSV header to its canonical name."""
+    return _HEADER_ALIASES.get(header.strip().lower(), header.strip())
 
 
 def parse_comp_report(file_path: str) -> List[Dict[str, str]]:
@@ -31,18 +50,27 @@ def parse_comp_report(file_path: str) -> List[Dict[str, str]]:
         FileNotFoundError: If the file does not exist
         ValueError: If required columns are missing or file is empty
     """
-    with open(file_path, "r", encoding="utf-8") as f:
+    with open(file_path, "r", encoding="utf-8-sig") as f:
         reader = csv.DictReader(f)
         if reader.fieldnames is None:
             raise ValueError(f"CSV file '{file_path}' is empty")
 
-        missing = REQUIRED_COLUMNS - set(reader.fieldnames)
+        # Normalize column headers to canonical names
+        canonical_names = [_normalize_header(h) for h in reader.fieldnames]
+
+        missing = REQUIRED_COLUMNS - set(canonical_names)
         if missing:
             raise ValueError(
                 f"CSV file missing required columns: {', '.join(sorted(missing))}"
             )
 
-        rows = list(reader)
+        # Re-key each row using normalized headers
+        rows = []
+        for raw_row in reader:
+            row = {}
+            for orig_key, canon_key in zip(reader.fieldnames, canonical_names):
+                row[canon_key] = raw_row[orig_key]
+            rows.append(row)
 
     if not rows:
         raise ValueError(f"CSV file '{file_path}' contains no data rows")

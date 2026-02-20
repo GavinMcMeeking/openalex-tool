@@ -5,6 +5,7 @@ import pytest
 from unittest.mock import patch
 
 from openalex_tool_pkg.comp_report import (
+    _normalize_header,
     parse_comp_report,
     get_unique_values,
     filter_rows,
@@ -94,6 +95,104 @@ class TestParseCompReport:
         assert row["Department"] == "Clinical Sciences"
         assert row["Job Title"] == "Associate Professor"
         assert row["Unit Name"] == "Veterinary Medicine"
+
+    def test_bom_handling(self, tmp_path):
+        """CSV files exported from Excel often have a UTF-8 BOM prefix."""
+        bom_csv = "\ufeff" + SAMPLE_CSV
+        csv_file = tmp_path / "bom.csv"
+        csv_file.write_text(bom_csv, encoding="utf-8")
+        rows = parse_comp_report(str(csv_file))
+        assert len(rows) == 8
+        # First column header should not have BOM prefix
+        assert "Unit Name" in rows[0]
+
+    def test_no_space_column_names(self, tmp_path):
+        """Some CSV exports use 'LastName' instead of 'Last Name'."""
+        csv_content = (
+            "Department,LastName,FirstInitial,Job Title,Contract\n"
+            "Chemistry,Bernstein,B,Professor,12-Month\n"
+            "Physics,Newton,I,Professor,12-Month\n"
+        )
+        csv_file = tmp_path / "nospace.csv"
+        csv_file.write_text(csv_content)
+        rows = parse_comp_report(str(csv_file))
+        assert len(rows) == 2
+        # Headers should be normalized to canonical names
+        assert rows[0]["Last Name"] == "Bernstein"
+        assert rows[0]["First Initial"] == "B"
+
+    def test_missing_unit_name_column(self, tmp_path):
+        """Unit Name is optional — not all comp report formats include it."""
+        csv_content = (
+            "Department,Last Name,First Initial,Job Title\n"
+            "Chemistry,Bernstein,B,Professor\n"
+        )
+        csv_file = tmp_path / "no_unit.csv"
+        csv_file.write_text(csv_content)
+        rows = parse_comp_report(str(csv_file))
+        assert len(rows) == 1
+        assert rows[0]["Last Name"] == "Bernstein"
+        # Unit Name should not be present
+        assert "Unit Name" not in rows[0]
+
+    def test_college_header_mapped_to_unit_name(self, tmp_path):
+        """'College' column should be normalized to 'Unit Name'."""
+        csv_content = (
+            "College,Department,LastName,FirstInitial,Job Title\n"
+            "Natural Sciences,Chemistry,Bernstein,B,Professor\n"
+        )
+        csv_file = tmp_path / "college.csv"
+        csv_file.write_text(csv_content)
+        rows = parse_comp_report(str(csv_file))
+        assert len(rows) == 1
+        assert rows[0]["Unit Name"] == "Natural Sciences"
+
+    def test_bom_with_no_space_headers(self, tmp_path):
+        """BOM + non-standard headers — the combo Katy encountered."""
+        csv_content = (
+            "\ufeffDepartment,LastName,FirstInitial,Job Title,Contract\n"
+            "Chemistry,Bernstein,B,Professor,12-Month\n"
+        )
+        csv_file = tmp_path / "bom_nospace.csv"
+        csv_file.write_text(csv_content, encoding="utf-8")
+        rows = parse_comp_report(str(csv_file))
+        assert len(rows) == 1
+        assert rows[0]["Last Name"] == "Bernstein"
+        assert rows[0]["First Initial"] == "B"
+
+
+# --- TestNormalizeHeader ---
+
+
+class TestNormalizeHeader:
+    def test_canonical_names_unchanged(self):
+        assert _normalize_header("Last Name") == "Last Name"
+        assert _normalize_header("First Initial") == "First Initial"
+
+    def test_no_space_variants(self):
+        assert _normalize_header("LastName") == "Last Name"
+        assert _normalize_header("FirstInitial") == "First Initial"
+        assert _normalize_header("JobTitle") == "Job Title"
+        assert _normalize_header("UnitName") == "Unit Name"
+
+    def test_college_maps_to_unit_name(self):
+        assert _normalize_header("College") == "Unit Name"
+        assert _normalize_header("college") == "Unit Name"
+
+    def test_case_insensitive(self):
+        assert _normalize_header("LASTNAME") == "Last Name"
+        assert _normalize_header("FIRSTINITIAL") == "First Initial"
+        assert _normalize_header("jobtitle") == "Job Title"
+        # Unknown headers are passed through as-is
+        assert _normalize_header("firstname") == "firstname"
+
+    def test_whitespace_stripped(self):
+        assert _normalize_header("  Last Name  ") == "Last Name"
+        assert _normalize_header(" LastName ") == "Last Name"
+
+    def test_unknown_header_passed_through(self):
+        assert _normalize_header("Contract") == "Contract"
+        assert _normalize_header("Annual Salary") == "Annual Salary"
 
 
 # --- TestGetUniqueValues ---
@@ -231,6 +330,13 @@ class TestRowsToAuthorEntries:
         rows = [{"Last Name": "", "First Initial": "A", "Department": "X", "Unit Name": "Y"}]
         entries = rows_to_author_entries(rows)
         assert entries == []
+
+    def test_missing_unit_name_defaults_empty(self):
+        """When Unit Name column is absent, college should default to empty string."""
+        rows = [{"Last Name": "Smith", "First Initial": "J", "Department": "Biology"}]
+        entries = rows_to_author_entries(rows)
+        assert len(entries) == 1
+        assert entries[0]["college"] == ""
 
 
 # --- TestLoadAndFilterCompReport ---
