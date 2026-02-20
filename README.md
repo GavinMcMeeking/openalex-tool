@@ -296,7 +296,9 @@ The `--comp-report` flag ingests a CSU compensation report CSV and feeds the fil
 
 ### CSV Format
 
-The tool expects a CSV with these columns: `Unit Name`, `Department`, `Last Name`, `First Initial`, `Job Title`. Additional columns (Contract, FTE, Salary, etc.) are ignored.
+The tool requires these columns: `Department`, `Last Name`, `First Initial`, `Job Title`. The `Unit Name` (or `College`) column is optional and provides college-level context for name resolution. Additional columns (Contract, FTE, Salary, etc.) are ignored.
+
+Column name variants are accepted — both `Last Name` and `LastName` work, as do `First Initial`/`FirstInitial`, `Job Title`/`JobTitle`, etc. UTF-8 BOM characters (common in Excel exports) are handled automatically.
 
 ```csv
 Unit Name,Department,Last Name,First Initial,Job Title,Contract,...
